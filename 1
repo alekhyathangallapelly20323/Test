@@ -1,0 +1,31 @@
+/*********************************************
+  Create 2 MongoDB Users in Cosmos DB (Mongo API)
+*********************************************/
+
+use admin;
+
+// Remove users if they already exist (safe for re-runs)
+try { db.dropUser("user1"); } catch (e) {}
+try { db.dropUser("user2"); } catch (e) {}
+
+// User 1 – Read-only
+db.createUser({
+  user: "user1",
+  pwd: "StrongPassword1!",
+  roles: [
+    { role: "read", db: "myDatabase" }
+  ]
+});
+
+// User 2 – Read & Write
+db.createUser({
+  user: "user2",
+  pwd: "StrongPassword2!",
+  roles: [
+    { role: "readWrite", db: "myDatabase" }
+  ]
+});
+
+// Verify users
+print("Users created:");
+db.getUsers();

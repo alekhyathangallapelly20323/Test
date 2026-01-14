@@ -1,0 +1,35 @@
+Hi [Manager’s Name],
+
+Here’s a quick summary of what we can do with Azure Cosmos DB (Mongo API) for user access, audit logs, and rollback:
+
+1. User Access Options
+Option A – Individual Users (50+ users):
+	•	Each user gets their own MongoDB username/password (using email ID).
+	•	Role-based access (read / read-write / admin).
+	•	When someone leaves, we remove their user account immediately.
+	•	Provides better accountability per person.
+
+Option B – Shared Credentials (2 connection strings):
+	•	Two shared users (e.g., Read-only & Read/Write).
+	•	Credentials can be rotated.
+	•	Easier to manage, but no individual accountability.
+
+2. Activity Logs (Audit Visibility)
+What we can see:
+	•	Infrastructure changes
+	•	RBAC/role assignments
+	•	Who created/modified/deleted access
+	•	Network, backup, and config changes
+
+What we cannot see:
+	•	MongoDB user logins
+	•	Who created collections
+	•	Who inserted/updated/deleted data
+
+This is a limitation of Cosmos DB (Mongo API).
+We’re exploring Log Analytics (Diagnostic Logs) to view DB operations (create/insert/update/delete), but user identity is still not captured.
+
+3. Rollback / Recovery
+	•	We can use Point-in-Time Restore to restore the entire database account (up to ~30 days).
+	•	The restore creates a new account; data can be copied back.
+	•	We cannot roll back individual collections or documents.

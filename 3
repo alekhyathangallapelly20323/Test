@@ -1,0 +1,23 @@
+use admin
+
+const users = [
+  "user1@company.com",
+  "user2@company.com",
+  "user3@company.com"
+  // add all 50 here
+]
+
+for (let i = 0; i < users.length; i++) {
+  const username = users[i]
+  const password = `Password${i+1}!`
+
+  db.runCommand({
+    createUser: username,
+    pwd: password,
+    roles: [
+      { role: "readAnyDatabase", db: "admin" }
+    ]
+  })
+
+  print(`Created: ${username}`)
+}

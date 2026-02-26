@@ -1,0 +1,18 @@
+VCoreMongoRequests
+| where TimeGenerated > ago(24h)
+| extend Cmd = tostring(PiiCommandText)
+| where OperationName in ("update","findAndModify","bulkWrite","replace","insert","delete")
+   or Cmd has "$set" or Cmd has "$unset" or Cmd has "$inc" or Cmd has "$push" or Cmd has "$pull"
+| extend ObjectId = extract(@"ObjectId\(\""([0-9a-fA-F]{24})\""\)", 1, Cmd)
+
+// extract update operators (these are the "new changes")
+| extend SetPart   = extract(@"\$set\s*:\s*\{.*?\}",   0, Cmd)
+| extend UnsetPart = extract(@"\$unset\s*:\s*\{.*?\}", 0, Cmd)
+| extend IncPart   = extract(@"\$inc\s*:\s*\{.*?\}",   0, Cmd)
+| extend PushPart  = extract(@"\$push\s*:\s*\{.*?\}",  0, Cmd)
+| extend PullPart  = extract(@"\$pull\s*:\s*\{.*?\}",  0, Cmd)
+
+| extend NewChanges = trim(" ;", strcat(SetPart, " ; ", UnsetPart, " ; ", IncPart, " ; ", PushPart, " ; ", PullPart))
+
+| project TimeGenerated, OperationName, DatabaseName, CollectionName, ObjectId, UserId, ClientIp, UserAgent, ErrorCode, NewChanges
+| order by TimeGenerated desc

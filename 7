@@ -1,0 +1,35 @@
+VCoreMongoRequests
+| where TimeGenerated > ago(24h)
+| where OperationName in ("findAndModify","update","bulkWrite","replace")
+| extend Cmd = tostring(PiiCommandText)
+| extend ObjectId = extract(@"ObjectId\(\""([0-9a-fA-F]{24})\""\)", 1, Cmd)
+
+// Try to extract the filter/query part
+| extend FilterPart =
+    coalesce(
+      extract(@"""query""\s*:\s*(\{.*?\})", 1, Cmd),
+      extract(@"""filter""\s*:\s*(\{.*?\})", 1, Cmd),
+      extract(@"""q""\s*:\s*(\{.*?\})", 1, Cmd),
+      ""
+    )
+
+// Try to extract the update part
+| extend UpdatePart =
+    coalesce(
+      extract(@"""update""\s*:\s*(\{.*\})", 1, Cmd),
+      extract(@"""u""\s*:\s*(\{.*\})", 1, Cmd),
+      ""
+    )
+
+// Pull common operators from the update text
+| extend SetPart   = extract(@"(\$set\s*:\s*\{.*?\})",   1, UpdatePart)
+| extend UnsetPart = extract(@"(\$unset\s*:\s*\{.*?\})", 1, UpdatePart)
+| extend IncPart   = extract(@"(\$inc\s*:\s*\{.*?\})",   1, UpdatePart)
+| extend PushPart  = extract(@"(\$push\s*:\s*\{.*?\})",  1, UpdatePart)
+| extend PullPart  = extract(@"(\$pull\s*:\s*\{.*?\})",  1, UpdatePart)
+
+| extend WhatChanged = trim(" ;", strcat(SetPart, " ; ", UnsetPart, " ; ", IncPart, " ; ", PushPart, " ; ", PullPart))
+
+| project TimeGenerated, OperationName, DatabaseName, CollectionName, UserId, ClientIp, UserAgent, ObjectId,
+          FilterPart, WhatChanged, UpdatePart, Cmd
+| order by TimeGenerated desc

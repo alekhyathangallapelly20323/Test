@@ -1,0 +1,26 @@
+let lookback = 24h;
+
+VCoreMongoRequests
+| where TimeGenerated > ago(lookback)
+| extend
+    Operation = tostring(OperationName),
+    DB = tostring(DatabaseName),
+    Coll = tostring(CollectionName),
+    User = tostring(UserId),
+    IP = tostring(ClientIp),
+    UA = tostring(UserAgent),
+    Err = tostring(ErrorCode),
+    Cmd = tostring(PiiCommandText),
+    ObjectId = extract(@"ObjectId\(\""([0-9a-fA-F]{24})\""\)", 1, tostring(PiiCommandText))
+| project
+    TimeGenerated,
+    Operation,
+    DB,
+    Coll,
+    User,
+    IP,
+    UA,
+    ObjectId,
+    Err,
+    Cmd
+| order by TimeGenerated desc

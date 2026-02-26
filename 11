@@ -1,0 +1,40 @@
+VCoreMongoRequests
+| where TimeGenerated > ago(24h)
+| where OperationName in ("insert","update","findAndModify","bulkWrite","replace","delete")
+| extend Cmd = tostring(PiiCommandText)
+
+| extend ObjectId = extract(@"ObjectId\(\""([0-9a-fA-F]{24})\""\)", 1, Cmd)
+
+| extend SetPart   = extract(@"(\$set\s*:\s*\{.*?\})",   1, Cmd)
+| extend UnsetPart = extract(@"(\$unset\s*:\s*\{.*?\})", 1, Cmd)
+| extend IncPart   = extract(@"(\$inc\s*:\s*\{.*?\})",   1, Cmd)
+| extend PushPart  = extract(@"(\$push\s*:\s*\{.*?\})",  1, Cmd)
+| extend PullPart  = extract(@"(\$pull\s*:\s*\{.*?\})",  1, Cmd)
+
+| extend WhatChanged = trim(" ;", strcat(SetPart, " ; ", UnsetPart, " ; ", IncPart, " ; ", PushPart, " ; ", PullPart))
+
+// "File-like" indicators (works for GridFS or embedded file fields)
+| extend FileIndicator =
+    case(
+        CollectionName in ("fs.files","fs.chunks"), "GridFS",
+        Cmd has "BinData", "BinaryData",
+        Cmd has "base64", "Base64",
+        Cmd has "contentType" or Cmd has "mime", "ContentType",
+        Cmd has "fileName" or Cmd has "filename", "FileNameField",
+        Cmd has "attachment" or Cmd has "document" or Cmd has "image", "AttachmentLikeField",
+        "None"
+    )
+
+| project
+    TimeGenerated,
+    OperationName,
+    DatabaseName,
+    CollectionName,
+    ObjectId,
+    UserId,
+    ClientIp,
+    UserAgent,
+    FileIndicator,
+    WhatChanged,
+    ErrorCode
+| order by TimeGenerated desc

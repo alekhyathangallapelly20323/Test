@@ -1,0 +1,10 @@
+VCoreMongoRequests
+| where TimeGenerated > ago(1h)
+| where OperationName in ("update","findAndModify","bulkWrite","replace")
+| extend Cmd = tostring(PiiCommandText)
+| extend SetPart = extract(@"(\$set\s*:\s*\{.*?\})", 1, Cmd)
+| extend UnsetPart = extract(@"(\$unset\s*:\s*\{.*?\})", 1, Cmd)
+| extend IncPart = extract(@"(\$inc\s*:\s*\{.*?\})", 1, Cmd)
+| extend WhatChanged = trim(" ;", strcat(SetPart, " ; ", UnsetPart, " ; ", IncPart))
+| project TimeGenerated, OperationName, DatabaseName, CollectionName, UserId, ClientIp, UserAgent, WhatChanged, Cmd
+| order by TimeGenerated desc

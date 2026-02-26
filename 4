@@ -1,0 +1,108 @@
+// ====== CONFIG ======
+let lookback = 24h;
+
+// Optional: map Mongo users to apps/teams (edit as needed)
+let AppMap = datatable(UserId:string, AppName:string)
+[
+  // "app_user_1", "PortalApp",
+  // "app_user_2", "JenkinsJob",
+  // "readonly_user", "ReadOnlyTeam"
+];
+
+// ====== BASE DATA ======
+let Base =
+VCoreMongoRequests
+| where TimeGenerated > ago(lookback)
+| extend
+    Operation = tostring(OperationName),
+    DB = tostring(DatabaseName),
+    Coll = tostring(CollectionName),
+    User = tostring(UserId),
+    IP = tostring(ClientIp),
+    UA = tostring(UserAgent),
+    Err = tostring(ErrorCode),
+    Cmd = tostring(PiiCommandText);
+
+// ====== WRITE OPS (document-level) ======
+let Writes =
+Base
+| where Operation in ("insert","update","delete","findAndModify","bulkWrite","replace","updateMany","updateOne","deleteMany","deleteOne","insertMany","insertOne")
+| extend
+    // Best-effort ObjectId extraction (works when command text includes ObjectId("..."))
+    ObjectId = extract(@"ObjectId\(\""([0-9a-fA-F]{24})\""\)", 1, Cmd),
+    // Best-effort extract for what changed (only works if Cmd contains these operators)
+    SetFields   = iif(Cmd has "\"$set\""   or Cmd has "'$set'"   or Cmd has "$set",   extract(@"(\$set[^}]{0,2000})", 1, Cmd), ""),
+    UnsetFields = iif(Cmd has "\"$unset\"" or Cmd has "'$unset'" or Cmd has "$unset", extract(@"(\$unset[^}]{0,2000})", 1, Cmd), ""),
+    IncFields   = iif(Cmd has "\"$inc\""   or Cmd has "'$inc'"   or Cmd has "$inc",   extract(@"(\$inc[^}]{0,2000})", 1, Cmd), ""),
+    PushFields  = iif(Cmd has "\"$push\""  or Cmd has "'$push'"  or Cmd has "$push",  extract(@"(\$push[^}]{0,2000})", 1, Cmd), ""),
+    PullFields  = iif(Cmd has "\"$pull\""  or Cmd has "'$pull'"  or Cmd has "$pull",  extract(@"(\$pull[^}]{0,2000})", 1, Cmd), ""),
+    // Connection-string proxy (you can't see the real connection string)
+    ConnProxy = strcat(User, " | ", IP, " | ", UA)
+| project
+    TimeGenerated,
+    Category="WriteOps",
+    Operation,
+    DB, Coll,
+    ObjectId,
+    WhatChanged = trim(" ;", strcat(SetFields, " ; ", UnsetFields, " ; ", IncFields, " ; ", PushFields, " ; ", PullFields)),
+    User, IP, UA,
+    ConnProxy,
+    Err,
+    Cmd;
+
+// ====== COLLECTION / INDEX / DDL OPS ======
+let DDL =
+Base
+| where Operation in ("create","drop","createIndexes","dropIndexes","collMod","renameCollection","dropDatabase","createCollection")
+| extend
+    ConnProxy = strcat(User, " | ", IP, " | ", UA)
+| project
+    TimeGenerated,
+    Category="DDL",
+    Operation,
+    DB, Coll,
+    ObjectId = "",
+    WhatChanged = "",
+    User, IP, UA,
+    ConnProxy,
+    Err,
+    Cmd;
+
+// ====== READ OPS (optional, for auditing who is reading) ======
+let Reads =
+Base
+| where Operation in ("find","aggregate","count","distinct")
+| extend
+    ConnProxy = strcat(User, " | ", IP, " | ", UA)
+| project
+    TimeGenerated,
+    Category="ReadOps",
+    Operation,
+    DB, Coll,
+    ObjectId = "",
+    WhatChanged = "",
+    User, IP, UA,
+    ConnProxy,
+    Err,
+    Cmd;
+
+// ====== OUTPUT ======
+union isfuzzy=true Writes, DDL, Reads
+| join kind=leftouter AppMap on $left.User == $right.UserId
+| extend AppName = coalesce(AppName, "Unknown/NotMapped")
+| project
+    TimeGenerated,
+    Category,
+    AppName,
+    User,
+    Operation,
+    DB,
+    Coll,
+    ObjectId,
+    WhatChanged,
+    IP,
+    UA,
+    ConnProxy,
+    Err,
+    Cmd
+| order by TimeGenerated desc
